@@ -8,21 +8,11 @@ from pytube import YouTube
 from pytube import Search
 import subprocess
 import os
-from TrazomDiscordInterface import QueryItem
+from shlex import quote
 from requests import get
 from yt_dlp import YoutubeDL
-
-class Track:
-    def __init__(self, track, user: str, user_id: int):
-        self.filename = track["id"]
-        self.filepath = None
-        self.title = track["title"]
-        self.URL = track["url"]
-        self.requester = user
-        self.user_id = user_id
-        self.duration = None
-        self.yt = None
-        self.streams = None
+from data_structures import Track
+from data_structures import QueryItem
 
 class main:
     def __init__(self, cid, secret, query_queue : Queue, player_queue : Queue, order_queue: Queue):
@@ -37,6 +27,12 @@ class main:
         self.played_list = []
         self.queue_list = []
 
+    def to_list(queue: Queue):
+        ret_list = []
+        for index in range(queue.qsize()):
+            
+            ret_list.append(queue.get_nowait())
+
     # get a string query and convert it to a track data structure for easy handling / display
     async def query_parser(self):
 
@@ -45,23 +41,28 @@ class main:
                 print("Download complete")
 
         
-        def search(queryItem: QueryItem):
+        async def search(query):
+            await asyncio.sleep(0.5)
             print("searching ...")
-            if queryItem.layer == 0:
-                #, 
-                YDL_OPTIONS = {'extract_flat' : True, 'format': 'bestaudio'}
-            else:
-                YDL_OPTIONS = {'format': 'bestaudio', 'noplaylist':'True'}
+            YDL_OPTIONS = {'extract_flat' : 'in_playlist', 'format': 'bestaudio', 'noplaylist': False}
+
             with YoutubeDL(YDL_OPTIONS) as ydl:
-                try:
+                try: # test the link
                     print("try")
-                    get(queryItem.query) 
-                except:
+                    get(query)
+                except: # not a yt link, traat as string search
                     print("except")
-                    video = ydl.extract_info(f"ytsearch1:{queryItem.query}", download=False)['entries'][0]
-                else:
+                    video = ydl.extract_info(f"ytsearch1:{query}", download=False)['entries'][0]
+                else: # yt link, can be playlist OR single track
                     print("else")
-                    video = ydl.extract_info(queryItem.query, download=False)
+                    videos = ydl.extract_info(query, download=False)
+                    print("done")
+                    print(videos.keys())
+
+                    if 'entries' in videos:
+                        pass # its a playlist
+                    else:
+                        pass # its a track
 
             return video
 
@@ -71,7 +72,7 @@ class main:
 
 
             # handoff to let the discord bot send it's response
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.5)
 
             # check the string for indicators of special handling
             # - spotify (track, playlist)
@@ -86,44 +87,102 @@ class main:
                     components = queryItem.query.split("/")
                     link_type = components[-2]
                     spotify_id = (components[-1].split("?"))[0]
+                    print("type: " + link_type + " id: " + spotify_id)
+                    tracks = []
+                    if link_type == "playlist":
+                        result = self.sp.playlist(spotify_id)
+                        result_tracks = result['tracks']['items']
+                        for item in result_tracks:
+                            tracks.append(item['track']['name'] + " " + item['track']['artists'][0]['name'])
+                    elif link_type == "track":
+                        result = self.sp.track(spotify_id)
+                        tracks.append(result['name'] + " " + result['artists'][0]['name'])
+
+                    print(tracks)
+
+                    for track_query in tracks:
+                        song = await search(track_query)
+                        track = Track(song, queryItem.user, queryItem.id)
+                        self.queue_list.append(track)
+                        
                 except:
                     print("ERROR: parsing spotify query: " + queryItem.query)
                     continue
             
-            else:
+            else: # youtube search string / url
                 print("string query processing")
-                song = search(queryItem)
-                ##print(song["title"])
-                print(song.keys())
+                song = await search(queryItem.query)
                 track = Track(song, queryItem.user, queryItem.id)
-                print(track.title)
                 self.queue_list.append(track)
 
-    # request a song to be downloaded 
-    async def download_track(self, track: Track, notify: Queue):
-        print("in download func: ")
+    # calls a command with popen and polls on an interval to check completion
+    async def wait_cmd(self, cmd):
+        print("cmd called")
+        proc = subprocess.Popen(cmd, shell = True)
+        while True:
+            print(proc.poll())
+            if proc.poll() is None:
+                print("cmd poll waiting")
+                await asyncio.sleep(1)
+            else:
+                print("cmd poll done")
+                return
 
-        # callback for when a download is completed
+    async def normalize_track(self, track):
+            # old version, blocking call
+        
+
+        print("norm started!")
+
+        #subprocess.run(["ffmpeg-normalize", track.inputfile, "-o", track.filepath, "-c:a", "libopus", "-t", "-14", "--keep-lra-above-loudness-range-target", "-f"])
+        await self.wait_cmd(["ffmpeg-normalize", track.inputfile, "-o", track.filepath, "-c:a", "libopus", "-t", "-14", "--keep-lra-above-loudness-range-target", "-f"])
+
+            # new await integration for shell commands from https://docs.python.org/3/library/asyncio-subprocess.html
+            # ["ffmpeg-normalize", track.inputfile, "-o", track.filepath, "-c:a", "libopus", "-t", "-14", "--keep-lra-above-loudness-range-target", "-f"]
+            # cmd = "ffmpeg-normalize " + quote(track.inputfile) + " -o " + quote(track.filepath) + " -c:a libopus -t -14 --keep-lra-above-loudness-range-target -f"
+            # proc = await asyncio.create_subprocess_shell(
+            # cmd,
+            # stdout = asyncio.subprocess.PIPE,
+            # stderr = asyncio.subprocess.PIPE)
+
+        print("norm finished!")
+
+        os.remove(track.inputfile)
+
+    # request a song to be downloaded 
+    async def download_track(self, track: Track):
+        print("download started!")
+        #   queue for download completion signaling
+        notify = Queue()
+
+            # callback for when a download is completed
         def dl_callback(d):
             if d["status"] == "finished":
                 print("Download complete!!!")
-                input_file = d['filename']
-                output_name = track.filename
-                subprocess.run(["ffmpeg-normalize", input_file, "-o", output_name + ".webm", "-c:a", "libopus", "-t", "-14", "--keep-lra-above-loudness-range-target", "-f"])
-                print("conversion done!")
+                track.inputfile = d['filename']
+                track.filepath = "songPool/" + track.filename + ".webm"
                 notify.put_nowait(track)
+                
 
+        # the url of the track to be downloaded, this should be populated in the query handler    
         urls = [track.URL]
 
+        # options for ytdlp, m4a audio only and no fixup
+        #   if fixup is enabled, it calls ffmpeg in another process (?) which can mess with us trying to delete the file and ffmpeg not being able to find it
         ydl_opts = {
-            'format': 'm4a/bestaudio/best'
-            # ℹ️ See help(yt_dlp.postprocessor) for a list of available Postprocessors and their arguments
+            'format': 'm4a/bestaudio/best',
+            'fixup': 'never'
+            # ℹ️ See help(yt_dlp.postprocessor) for a list of available Postprocessors and their arguments or https://github.com/ytdl-org/youtube-dl/blob/master/youtube_dl/YoutubeDL.py#L128-L278
         }
 
+        # call the download
         with YoutubeDL(ydl_opts) as ydl:
             ydl.add_progress_hook(dl_callback)
             error_code = ydl.download(urls)
-        
+
+        # await the completion
+        await notify.get()
+        print("download done!")
 
     async def order_handler(self):
         print("Order handler started")
@@ -135,18 +194,23 @@ class main:
                                             # its only being used as a messaging system between coroutines
 
             # free the baton for discord interface to respond
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.5)
 
             # now a song is requested, download the next track
             print("new order found!")
             if len(self.queue_list) > 0:    # make sure there is a song to play
                 print("starting order processing")
-                # queue to get notified through for waiting for download completion
-                notify_queue = Queue()
+
+                # get the first thing to play
                 track = self.queue_list.pop(0)
+
                 print("calling DL")
-                await self.download_track(track, notify_queue)   # request the download
-                await notify_queue.get()
+                await self.download_track(track)    # request the download and wait for completion
+
+                await self.normalize_track(track)  # request normalizing the loudness and wait for completion
+
+                print("DL complete, sending to player")
+                await self.player_queue.put(track)
             else:
                 print("order requested but list empty?")
 

@@ -1,14 +1,10 @@
 import discord
 from asyncio import Queue
 from discord import app_commands
+import asyncio
+from data_structures import Track
+from data_structures import QueryItem
 
-# object to hold query requests and associated requester
-class QueryItem:
-    def __init__(self, query: str, context: discord.Interaction):
-        self.query = query
-        self.user = context.user.display_name
-        self.id = context.user.id
-        self.layer = 0
 
 ##  an override / child class of the default discord Client
 #   Following the discord.py example code, this is done to
@@ -29,6 +25,32 @@ class MyClient(discord.Client):
         self.player_queue = player_queue
         self.order_queue = order_queue
         self.vchannel = None
+        
+    async def music_player(self):
+        
+        def on_track_finish():
+            self.order_queue.put_nowait("item")
+
+        while True:
+
+            track:Track = await self.player_queue.get()
+
+            if self.vchannel is None: # clear the queue
+                self.order_queue.put_nowait("item")
+
+            print("player: order ready")
+            source = discord.FFmpegOpusAudio(track.filepath)
+            print("Source: ")
+            print(source)
+
+            # check if something is already playing
+            if self.voice_clients[0].is_playing():
+                print("something already playing")
+                self.voice_clients[0].stop()
+
+            self.voice_clients[0].play(source, after = on_track_finish)
+
+            print("now playing" + track.title)
         
         
     # listener override / piggyback to auto-disconnect
@@ -113,9 +135,16 @@ class main:
             await client.tree.sync()
             print("Ready!")
 
+        
+
         #   client.start is used instead of run (like in many examples) to hook into
         #   the pre-existing async loop instead of setting one up itself, so start
         #   is non blocking and await is used to block until its finished instead
-        task = client.start(token = self.token)
-        await task
+
+        client_task = asyncio.create_task(self.client.start(token = self.token))
+        print("player task started")
+        player_task = asyncio.create_task(self.client.music_player())
+
+        await client_task
+        await player_task
 
