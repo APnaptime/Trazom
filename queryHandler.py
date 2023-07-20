@@ -4,8 +4,6 @@ import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 import json
 from asyncio import Queue
-from pytube import YouTube
-from pytube import Search
 import subprocess
 import os
 from shlex import quote
@@ -13,6 +11,7 @@ from requests import get
 from yt_dlp import YoutubeDL
 from data_structures import Track
 from data_structures import QueryItem
+from datetime import datetime
 
 class main:
     def __init__(self, cid, secret, query_queue : Queue, player_queue : Queue, order_queue: Queue):
@@ -26,12 +25,15 @@ class main:
         # internal tracks
         self.played_list = []
         self.queue_list = []
+        
 
     def to_list(queue: Queue):
         ret_list = []
         for index in range(queue.qsize()):
-            
-            ret_list.append(queue.get_nowait())
+            item = queue.get_nowait()
+            ret_list.append(item)
+            queue.put_nowait(item)
+        return ret_list
 
     # get a string query and convert it to a track data structure for easy handling / display
     async def query_parser(self):
@@ -52,24 +54,27 @@ class main:
                     get(query)
                 except: # not a yt link, traat as string search
                     print("except")
-                    video = ydl.extract_info(f"ytsearch1:{query}", download=False)['entries'][0]
+                    video = YoutubeDL({'extract_flat' : True, 'format': 'bestaudio', 'noplaylist': True}).extract_info(f"ytsearch1:{query}", download=False)['entries'][0]
+                    return [video]
                 else: # yt link, can be playlist OR single track
                     print("else")
                     videos = ydl.extract_info(query, download=False)
                     print("done")
-                    print(videos.keys())
 
                     if 'entries' in videos:
-                        pass # its a playlist
+                        return videos['entries']
                     else:
-                        pass # its a track
+                        print(videos['title'])
+                        print(videos.keys())
+                        print(videos['format'])
+                        print(videos['audio_ext'])
+                        return [videos]
+                    
 
-            return video
 
         while True:
             # get a query from the discord interface (str), this is a blocking call to wait for a request
             queryItem:QueryItem = await self.query_queue.get()
-
 
             # handoff to let the discord bot send it's response
             await asyncio.sleep(0.5)
@@ -101,9 +106,9 @@ class main:
                     print(tracks)
 
                     for track_query in tracks:
-                        song = await search(track_query)
-                        track = Track(song, queryItem.user, queryItem.id)
-                        self.queue_list.append(track)
+                        songs = await search(track_query)
+                        for song in songs:
+                            self.queue_list.append(Track(song, queryItem.user, queryItem.id))
                         
                 except:
                     print("ERROR: parsing spotify query: " + queryItem.query)
@@ -111,22 +116,51 @@ class main:
             
             else: # youtube search string / url
                 print("string query processing")
-                song = await search(queryItem.query)
-                track = Track(song, queryItem.user, queryItem.id)
-                self.queue_list.append(track)
+                songs = await search(queryItem.query)
+                print("returned sq")
+                for song in songs:
+                    self.queue_list.append(Track(song, queryItem.user, queryItem.id))
 
     # calls a command with popen and polls on an interval to check completion
     async def wait_cmd(self, cmd):
         print("cmd called")
+        passed = 0
         proc = subprocess.Popen(cmd, shell = True)
         while True:
-            print(proc.poll())
             if proc.poll() is None:
-                print("cmd poll waiting")
+                print("cmd poll waiting " + str(passed))
+                passed = passed + 1
                 await asyncio.sleep(1)
             else:
                 print("cmd poll done")
                 return
+
+    # updates access time ex) https://techoverflow.net/2019/07/22/how-to-set-file-access-time-atime-in-python/
+    # should always check to make sure file is in the pool first
+    def update_access_time(self, track: Track):
+        now = datetime.now()
+        print("now")
+        fpath = os.path.abspath(track.filepath)
+        print("path")
+        stat = os.stat(fpath)
+        print("stat")
+        mtime = stat.st_mtime
+        print("mtime")
+        os.utime(fpath, times = (now.timestamp(), mtime))
+
+    def song_in_pool(self, track: Track):
+        print("starting pool search")
+        fnames = [f for f in os.listdir(os.path.join('.','songPool'))]
+        print(fnames)
+        print("looking for: " + track.filename + ".webm" + " in list:")
+        res = track.filename + ".webm" in fnames
+        if res is True:
+            print("found, updating")
+            self.update_access_time(track)
+        return res
+
+    def clear_space_for(self, track: Track):
+        capacity = 500 * 1000000
 
     async def normalize_track(self, track):
             # old version, blocking call
@@ -157,10 +191,13 @@ class main:
 
             # callback for when a download is completed
         def dl_callback(d):
+            min_wait = 5 # after 5 seconds
+            max_eta = 60 # check the eta
+             ## TODO: https://stackoverflow.com/questions/53315109/how-to-stop-youtube-dl-download-inside-a-thread-using-python-3
+
             if d["status"] == "finished":
                 print("Download complete!!!")
                 track.inputfile = d['filename']
-                track.filepath = "songPool/" + track.filename + ".webm"
                 notify.put_nowait(track)
                 
 
@@ -170,17 +207,20 @@ class main:
         # options for ytdlp, m4a audio only and no fixup
         #   if fixup is enabled, it calls ffmpeg in another process (?) which can mess with us trying to delete the file and ffmpeg not being able to find it
         ydl_opts = {
-            'format': 'm4a/bestaudio/best',
-            'fixup': 'never'
+            'format': 'bestaudio',
+            'fixup': 'never',
+            'outtmpl': '%(title).200B.%(ext)s' # https://github.com/yt-dlp/yt-dlp/issues/1136 for too long default filenames
             # ℹ️ See help(yt_dlp.postprocessor) for a list of available Postprocessors and their arguments or https://github.com/ytdl-org/youtube-dl/blob/master/youtube_dl/YoutubeDL.py#L128-L278
         }
 
         # call the download
         with YoutubeDL(ydl_opts) as ydl:
+            print("track URL: " + track.URL)
             ydl.add_progress_hook(dl_callback)
             error_code = ydl.download(urls)
 
         # await the completion
+
         await notify.get()
         print("download done!")
 
@@ -192,22 +232,29 @@ class main:
             order = await self.order_queue.get()  # wait on an order for the next song, like a notify mailbox
                                             # the contents of the order_queue are not relevent since
                                             # its only being used as a messaging system between coroutines
+            print("new order found!")
+
+
 
             # free the baton for discord interface to respond
             await asyncio.sleep(0.5)
 
             # now a song is requested, download the next track
-            print("new order found!")
+            
             if len(self.queue_list) > 0:    # make sure there is a song to play
                 print("starting order processing")
 
                 # get the first thing to play
                 track = self.queue_list.pop(0)
+                print("checking condition: ")
+                res = self.song_in_pool(track)
+                if res is True:
+                    print("song already in pool!")
+                else:
+                    print("calling DL")
+                    await self.download_track(track)    # request the download and wait for completion
 
-                print("calling DL")
-                await self.download_track(track)    # request the download and wait for completion
-
-                await self.normalize_track(track)  # request normalizing the loudness and wait for completion
+                    await self.normalize_track(track)  # request normalizing the loudness and wait for completion
 
                 print("DL complete, sending to player")
                 await self.player_queue.put(track)

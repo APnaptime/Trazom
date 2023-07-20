@@ -1,6 +1,7 @@
 import discord
 from asyncio import Queue
 from discord import app_commands
+import os
 import asyncio
 from data_structures import Track
 from data_structures import QueryItem
@@ -25,33 +26,72 @@ class MyClient(discord.Client):
         self.player_queue = player_queue
         self.order_queue = order_queue
         self.vchannel = None
+        self.player_track = None
         
     async def music_player(self):
         
-        def on_track_finish():
-            self.order_queue.put_nowait("item")
+        next_trigger = Queue(1)
+        print("initialized size: " + str(next_trigger.qsize()))
 
-        while True:
+        # callback function for AFTER a stream is exhausted
+        # but effectively is called right after the track starts
+        # since the stream is read very quickly but takes human time
+        # to play back
+        def on_track_start(track):
+            print("Player Finish Called by tid: " + str(track.track_id))
+           # next_trigger.put_nowait(track)
+            #self.order_queue.put_nowait("item")
 
-            track:Track = await self.player_queue.get()
+        # async handler for ordering the next song to play when the current
+        # one is finished playing
+        async def next_track_handler():
+            while True:
+                print("next handler initialized")
 
-            if self.vchannel is None: # clear the queue
-                self.order_queue.put_nowait("item")
+                print("next handler start size: " + str(next_trigger.qsize()))
+                track = await next_trigger.get()
+                print("next handler item got!")
 
-            print("player: order ready")
-            source = discord.FFmpegOpusAudio(track.filepath)
-            print("Source: ")
-            print(source)
+                while True: # poll for the song end / skip
+                    await asyncio.sleep(1)
+                    if self.voice_clients[0].is_playing():
+                        continue # continue waiting
+                    else:
+                        print("tid self: " + str(track.track_id) + " current: " + str(self.player_track))
+                        if track.track_id == self.player_track:
+                            print("normal skip")
+                            self.order_queue.put_nowait("item")
+                        else:
+                            print("override skip")
+                        break
 
-            # check if something is already playing
-            if self.voice_clients[0].is_playing():
-                print("something already playing")
-                self.voice_clients[0].stop()
 
-            self.voice_clients[0].play(source, after = on_track_finish)
+        async def player_handler():
+            while True:
+                track:Track = await self.player_queue.get()
+                self.player_track = track.track_id
+                if self.vchannel is None: # clear the queue
+                    self.order_queue.put_nowait("item")
+                    continue
 
-            print("now playing" + track.title)
+                print("player: order ready")
+                source = discord.FFmpegOpusAudio(track.filepath)
+                print("Source: ")
+                print(source)
+
+                # check if something is already playing
+                if self.voice_clients[0].is_playing():
+                    print("something already playing")
+                    self.voice_clients[0].stop()
+                self.voice_clients[0].play(source, after = on_track_start(track))
+                await next_trigger.put(track)
+                print("now playing " + track.title)
         
+        next_handler_task = asyncio.create_task(next_track_handler())
+        player_handler_task = asyncio.create_task(player_handler())
+
+        await next_handler_task
+        await player_handler_task
         
     # listener override / piggyback to auto-disconnect
     async def on_voice_state_update(self, member, before, after):
@@ -76,8 +116,12 @@ class MyClient(discord.Client):
     async def setup_hook(self):
 
         @self.tree.command(name = "print", description = "parrot back") 
-        async def first_command(interaction, arg1: str):
-            await interaction.response.send_message(arg1)
+        async def first_command(interaction):
+            files = [f for f in os.listdir(os.path.join('.','songPool'))]
+            for f in files:
+                fpath = os.path.abspath(os.path.join('songPool',f))
+                print("fpath: " + fpath + " of len " + str(os.path.getsize(fpath)))
+            await interaction.response.send_message("test")
 
         @self.tree.command(name = "sim", description = "simulate a order queue") 
         async def test2(interaction):

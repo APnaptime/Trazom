@@ -1,18 +1,22 @@
 import discord
 
 class Track:
+    id = 0
     def __init__(self, track, user: str, user_id: int):
         self.filename = track["id"]
         self.inputfile = None
-        self.filepath = None
+        self.filepath = "songPool/" + self.filename + ".webm"
         self.dl_requested = False
         self.title = track["title"]
         self.URL = track["url"]
         self.requester = user
         self.user_id = user_id
-        self.duration = None
+        self.duration = int(track["duration"])
         self.yt = None
         self.streams = None
+        self.track_id = Track.id # a unique identifier for a single track instance
+        Track.id = Track.id + 1  
+
 
 # object to hold query requests and associated requester
 class QueryItem:
