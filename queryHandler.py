@@ -37,11 +37,6 @@ class main:
 
     # get a string query and convert it to a track data structure for easy handling / display
     async def query_parser(self):
-
-        def query_cb(d):
-            if d["status"] == "finished":
-                print("Download complete")
-
         
         async def search(query):
             await asyncio.sleep(0.5)
@@ -69,8 +64,6 @@ class main:
                         print(videos['format'])
                         print(videos['audio_ext'])
                         return [videos]
-                    
-
 
         while True:
             # get a query from the discord interface (str), this is a blocking call to wait for a request
@@ -121,7 +114,7 @@ class main:
                 for song in songs:
                     self.queue_list.append(Track(song, queryItem.user, queryItem.id))
 
-    # calls a command with popen and polls on an interval to check completion
+    # calls a command with popen and polls on an interval to check completion, NOT SANITIZED - make sure cmd is an array
     async def wait_cmd(self, cmd):
         print("cmd called")
         passed = 0
@@ -163,24 +156,12 @@ class main:
         capacity = 500 * 1000000
 
     async def normalize_track(self, track):
-            # old version, blocking call
-        
-
         print("norm started!")
 
-        #subprocess.run(["ffmpeg-normalize", track.inputfile, "-o", track.filepath, "-c:a", "libopus", "-t", "-14", "--keep-lra-above-loudness-range-target", "-f"])
+        # new await integration for shell commands from https://docs.python.org/3/library/asyncio-subprocess.html
         await self.wait_cmd(["ffmpeg-normalize", track.inputfile, "-o", track.filepath, "-c:a", "libopus", "-t", "-14", "--keep-lra-above-loudness-range-target", "-f"])
 
-            # new await integration for shell commands from https://docs.python.org/3/library/asyncio-subprocess.html
-            # ["ffmpeg-normalize", track.inputfile, "-o", track.filepath, "-c:a", "libopus", "-t", "-14", "--keep-lra-above-loudness-range-target", "-f"]
-            # cmd = "ffmpeg-normalize " + quote(track.inputfile) + " -o " + quote(track.filepath) + " -c:a libopus -t -14 --keep-lra-above-loudness-range-target -f"
-            # proc = await asyncio.create_subprocess_shell(
-            # cmd,
-            # stdout = asyncio.subprocess.PIPE,
-            # stderr = asyncio.subprocess.PIPE)
-
         print("norm finished!")
-
         os.remove(track.inputfile)
 
     # request a song to be downloaded 

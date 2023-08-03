@@ -1,6 +1,7 @@
 import discord
 from asyncio import Queue
 from discord import app_commands
+from discord.ext import commands
 import os
 import asyncio
 from data_structures import Track
@@ -184,6 +185,7 @@ class main:
         #   client.start is used instead of run (like in many examples) to hook into
         #   the pre-existing async loop instead of setting one up itself, so start
         #   is non blocking and await is used to block until its finished instead
+
 
         client_task = asyncio.create_task(self.client.start(token = self.token))
         print("player task started")
