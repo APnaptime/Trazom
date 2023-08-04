@@ -47,9 +47,8 @@ class TrazomCog(commands.Cog):
 
     async def cmd_check(self, interaction: nextcord.Interaction):
         guild = interaction.guild_id
-        voice_channel = interaction.user.voice.channel
         # ensure the caller is in a vc
-        if voice_channel is None:
+        if interaction.user.voice is None or interaction.user.voice.channel is None:
             await interaction.response.send_message("You must be connected to a voice channel~")
             raise commands.CommandError("caller not in a voice channel")
 
@@ -61,7 +60,7 @@ class TrazomCog(commands.Cog):
             self.players[guild] = new_instance        
 
         # ensure the vc of trazom and the caller are the same
-        if not voice_channel == self.players[guild].vchannel:
+        if not interaction.user.voice.channel == self.players[guild].vchannel:
             await interaction.response.send_message("You must be in the same voice channel~")
             raise commands.CommandError("caller not in same voice channel")
 
@@ -99,6 +98,17 @@ class TrazomCog(commands.Cog):
         await self.cmd_check(interaction)
         self.remove_player(interaction.guild_id)
         await interaction.response.send_message("exit ACK")
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        
+        guild = member.guild.id
+
+        if guild in self.players.keys() and len(self.players[guild].vchannel.members) == 1:
+            print("alone!")
+            self.remove_player(guild)
+
+
 
 
 # function called by the manager somewhere that is run on startup. The cog itself is instantiated

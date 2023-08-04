@@ -13,6 +13,7 @@ from requests import get
 
 from data_structures import Track
 from data_structures import QueryItem
+from data_structures import PlayQueue
 
 class Trazom():
     
@@ -35,6 +36,9 @@ class Trazom():
         self.player_queue = asyncio.Queue(maxsize = 2)  # downloaded tracks to be played by the player
         self.order_queue = asyncio.Queue(maxsize = 1)   # requests to download  processed query
         self.now_playing = asyncio.Queue(maxsize = 1)   # the currently playing track
+
+        # the player queue for processed tracks to be played, allows for custom sorting (vs default asyncio.Queue)
+        self.track_queue = PlayQueue()
 
         # list for processed tracks to be played
         self.queue_list = []
@@ -131,6 +135,11 @@ class Trazom():
 
         await notify.get()
         print("download done!")
+
+    async def process_track(self, track: Track):
+        if self.song_in_pool(track):
+            return
+        
 
     # coroutine for ordering the next song to play when the current one is finished playing
     async def next_track_handler(self):
@@ -235,7 +244,7 @@ class Trazom():
                     for track_query in tracks:
                         songs = await search(track_query)
                         for song in songs:
-                            self.queue_list.append(Track(song, queryItem.user, queryItem.id))
+                            self.track_queue.put(Track(song, queryItem.user, queryItem.id))
                         
                 except:
                     print("ERROR: parsing spotify query: " + queryItem.query)
@@ -246,12 +255,13 @@ class Trazom():
                 songs = await search(queryItem.query)
                 print("returned sq")
                 for song in songs:
-                    self.queue_list.append(Track(song, queryItem.user, queryItem.id))
+                    self.track_queue.put(Track(song, queryItem.user, queryItem.id))
 
     # coroutine that provides downloaded (and normalized) songs to the player via queue
     async def order_handler(self):
         print("Order handler started")
-
+        # put in an order so we start playing immedietly
+        self.order_queue.put_nowait("item")
         # loop for getting the order for the next song from the discord interface
         while True:
             order = await self.order_queue.get()  # wait on an order for the next song, like a notify mailbox
@@ -263,26 +273,18 @@ class Trazom():
             await asyncio.sleep(0.5)
 
             # now a song is requested, download the next track
-            
-            if len(self.queue_list) > 0:    # make sure there is a song to play
-                print("starting order processing")
-
-                # get the first thing to play
-                track = self.queue_list.pop(0)
-                print("checking condition: ")
-                res = self.song_in_pool(track)
-                if res is True:
-                    print("song already in pool!")
-                else:
-                    print("calling DL")
-                    await self.download_track(track)    # request the download and wait for completion
-
-                    await self.normalize_track(track)  # request normalizing the loudness and wait for completion
-
-                print("DL complete, sending to player")
-                await self.player_queue.put(track)
+            track = await self.track_queue.get()
+            if self.song_in_pool(track):
+                print("song already in pool!")
             else:
-                print("order requested but list empty?")
+                print("calling DL")
+                await self.download_track(track)    # request the download and wait for completion
+
+                await self.normalize_track(track)  # request normalizing the loudness and wait for completion
+
+            print("DL complete, sending to player")
+            await self.player_queue.put(track)
+
 
     async def start_tasks(self):
         # connect to the voice channel
@@ -313,7 +315,6 @@ class Trazom():
     def start(self):
         # call the async functions required to start the bot
         self.task = asyncio.create_task(self.start_tasks())
-
 
     ## methods that discord commands call to interface with trazom
     
