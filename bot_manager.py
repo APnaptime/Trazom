@@ -42,7 +42,7 @@ async def main():
     async def reload_cmd(interaction: nextcord.Interaction):
         client.reload_extension(botname)
         await client.sync_application_commands(guild_id = guild)
-        await interaction.response.send_message("reloaded " + botname)
+        await interaction.response.send_message("reloaded ")
 
     await client.start(token = TOKEN)
 
