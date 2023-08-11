@@ -2,11 +2,13 @@ import asyncio
 import nextcord
 from nextcord.ext import commands
 from nextcord.ext import application_checks
+import traceback
 import json
 
 from nextcord.ext.commands.context import Context
 
 from trazom import Trazom
+from trazom_utils import short_response
 
 # a Cog collection of commands and listeners to handle interfacing
 # with the discord bot. Only one instance of this cog will exist
@@ -46,67 +48,108 @@ class TrazomCog(commands.Cog):
     ## slash command definitions
 
     async def cmd_check(self, interaction: nextcord.Interaction):
+        await interaction.response.defer()
         guild = interaction.guild_id
         # ensure the caller is in a vc
         if interaction.user.voice is None or interaction.user.voice.channel is None:
-            await interaction.response.send_message("You must be connected to a voice channel~")
+            await short_response(interaction = interaction, response = "You must be connected to a voice channel~")
             raise commands.CommandError("caller not in a voice channel")
 
         # ensure the guild the caller is in has a trazom instance
         if not guild in self.players:
             # create a new trazom instance
+            print("cog: new trazom instance")
             new_instance = Trazom(interaction = interaction)
             new_instance.start()
             self.players[guild] = new_instance        
 
         # ensure the vc of trazom and the caller are the same
         if not interaction.user.voice.channel == self.players[guild].vchannel:
-            await interaction.response.send_message("You must be in the same voice channel~")
+            await short_response(interaction = interaction, response = "You must be in the same voice channel~")
             raise commands.CommandError("caller not in same voice channel")
+
+
 
     # play command:
     @nextcord.slash_command(name = "p", description = "Adds a song or playlist to be played")
     async def play_cmd(self, interaction: nextcord.Interaction, query: str):
-        await self.cmd_check(interaction)
-        await interaction.response.send_message("p ACK")
-        # at this point, we should be guarenteed to have a trazom instance created
-        # so we send the query to the trazom instance
-        self.players[interaction.guild_id].play(interaction, query)
+        try:
+            await self.cmd_check(interaction)
+        except commands.CommandError:
+            return
+
+        await self.players[interaction.guild_id].play(interaction, query)
+
+
 
     # skip command:
     @nextcord.slash_command(name = "s", description = "Skip: skips the currently playing song")
     async def skip_cmd(self, interaction: nextcord.Interaction):
-        await self.cmd_check(interaction)
-        await interaction.response.send_message("s ACK")
-        self.players[interaction.guild_id].skip()
+        try:
+            await self.cmd_check(interaction)
+        except commands.CommandError: 
+            return
+        
+        await self.players[interaction.guild_id].skip(interaction)
 
+    
+    
     # queue command:
     @nextcord.slash_command(name = "q", description = "Queue: shows the songs to be played")
     async def queue_cmd(self, interaction: nextcord.Interaction):
-        await self.cmd_check(interaction)
-        await interaction.response.send_message("q ACK")
+        try:
+            await self.cmd_check(interaction)
+        except Exception as e:
+            print("Trazom: Excpetion Caught! (took too long in a task so a command timed out)")
+            return
+        
+        await self.players[interaction.guild_id].get_queue(interaction)
+        
+
 
     # remove command:
     @nextcord.slash_command(name = "r", description = "Remove: deletes a song from the Queue by giving a #")
-    async def remove_cmd(self, interaction: nextcord.Interaction):
-        await self.cmd_check(interaction)
-        await interaction.response.send_message("r ACK")
+    async def remove_cmd(self, interaction: nextcord.Interaction, index: int):
+        try:
+            await self.cmd_check(interaction)
+        except commands.CommandError:
+            return
+        await self.players[interaction.guild_id].remove_track(interaction, index)
+
+
 
     # exit command:
     @nextcord.slash_command(name = "e", description = "Exit: Trazom - exit stage right")
     async def exit_cmd(self, interaction: nextcord.Interaction):
-        await self.cmd_check(interaction)
+        try:
+            await self.cmd_check(interaction)
+        except commands.CommandError:
+            return
+        await interaction.followup.send(content = ":notes: Trazom exit~")
         self.remove_player(interaction.guild_id)
-        await interaction.response.send_message("exit ACK")
+
+
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
         
         guild = member.guild.id
 
-        if guild in self.players.keys() and len(self.players[guild].vchannel.members) == 1:
-            print("alone!")
-            self.remove_player(guild)
+        if guild not in self.players.keys():
+            return
+
+        if after is not None and after.channel is not None:
+            print("after has states!")
+            print(str(len(after.channel.members)) + " after members")
+            if after.channel.id != self.players[guild].vchannel.id:
+                return
+
+        await asyncio.sleep(1)
+
+        if guild in self.players.keys():
+            print(str(len(self.players[guild].vchannel.members)) + " members in the channel")
+            
+            #self.remove_player(guild)
 
 
 

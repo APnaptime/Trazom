@@ -14,7 +14,7 @@ from requests import get
 from trazom_utils import Track
 from trazom_utils import QueryItem
 from trazom_utils import PlayQueue
-from trazom_utils import search
+import trazom_utils
 
 class Trazom():
     
@@ -42,70 +42,69 @@ class Trazom():
         self.vchannel = interaction.user.voice.channel      # channel to connect to, note this is not a connection yet
         self.tasks = None                                   # asyncio tasks trazom uses, to be canceled upon request or unload
         self.now_playing = None                               # the currently playing song
-        
+        self.q_msg = None
+        self.trazom_channel = interaction.channel
     
 
-    # helper function: updates access time ex) https://techoverflow.net/2019/07/22/how-to-set-file-access-time-atime-in-python/
-    # should always check to make sure file is in the pool first via song_in_pool
-    def update_access_time(self, track: Track):
-        now = datetime.now()
-        print("now")
-        fpath = os.path.abspath(track.play_file)
-        print("path")
-        stat = os.stat(fpath)
-        print("stat")
-        mtime = stat.st_mtime
-        print("mtime")
-        os.utime(fpath, times = (now.timestamp(), mtime))
+    
 
     # coroutine for ordering the next song to play when the current one is finished playing
     async def next_track_handler(self):
+
         while True:
-            #print("next handler initialized")
-
-            #print("next handler start size: " + str(self.next_queue.qsize()))
             track = await self.next_queue.get()
-            #print("next handler item got!")
-
+            time_elapsed = 0
             while True: # poll for the song end / skip
                 await asyncio.sleep(1)
+                time_elapsed = time_elapsed + 1
+
                 if self.voice_client.is_playing():
                     continue # continue waiting
                 else:
-                    print("finished playing " + track.title)
                     self.now_playing = None
-                    self.order_queue.put_nowait("item")
+
+                    if self.q_msg is not None:
+                        await self.q_msg.edit(embed = self.track_queue.get_embed(self.now_playing))
+                        
+                    self.order_queue.put_nowait(5)
+
+                    if time_elapsed < track.duration: # if we finish ahead of time (skip manually stops the track)
+                        # record the amount of time skipped for the order calculations
+                        self.track_queue.notify_skipped(track = track, duration = track.duration - time_elapsed)
+
                     break
+
+
 
     # coroutine player that interfaces with the discord voice client
     async def player_handler(self):
+
         while True:
             track:Track = await self.player_queue.get()
             self.player_track = track.track_id
 
-            if self.vchannel is None: # clear the queue
-                self.order_queue.put_nowait("item")
-                continue
-
             source = nextcord.FFmpegOpusAudio(track.play_file)
 
-            # check if something is already playing
             if self.voice_client.is_playing():
-                print("something already playing")
                 self.voice_client.stop()
 
             self.now_playing = track
 
+            if self.q_msg is not None:
+                await self.q_msg.edit(embed = self.track_queue.get_embed(self.now_playing))
+
             self.voice_client.play(source)
-            print("now playing " + track.title)
             await self.next_queue.put(track)
             
-
+    # coroutine that parses string searches into track datastructures with spotipy and yt-dlp
     async def query_handler(self):
-        print("query_handler: started")
+
         while True:
             queryItem = await self.query_queue.get()
-            print("query_handler: searching: " + queryItem.query)
+
+            # handoff to let response happen
+            await asyncio.sleep(0.5)
+
             if "open.spotify.com" in queryItem.query:       # if its a spotify link
                 try:
                     components = queryItem.query.split("/")         # manual spotify url processing
@@ -113,19 +112,25 @@ class Trazom():
                     spotify_id = (components[-1].split("?"))[0]     # extract ID
                     tracks = []                                     # song names from the spotify link
 
-                    if link_type == "playlist":
+                    if link_type == "playlist": # playlist of tracks
                         result = self.sp.playlist(spotify_id)
-                        result_tracks = result['tracks']['items']   # search for the spotify ID
-                        for item in result_tracks:
+                        for item in result['tracks']['items']:
                             tracks.append(item['track']['name'] + " " + item['track']['artists'][0]['name'])    # for every song, youtube search: trackname + track artist
 
-                    elif link_type == "track":                      # case single track
+                    elif link_type == "album":  # album, unlike playlists, no need to ['track']
+                        result = self.sp.album(spotify_id)
+                        for item in result['tracks']['items']:
+                            tracks.append(item['name'] + " " + item['artists'][0]['name'])    # for every song, youtube search: trackname + track artist
+
+                    elif link_type == "track":  # case single track
                         result = self.sp.track(spotify_id)
                         tracks.append(result['name'] + " " + result['artists'][0]['name'])  # youtube search: trackname + track artist
 
+                    # now for every track that was found, perform a youtube search
+
                     for track_query in tracks:
                         await asyncio.sleep(0)
-                        songs = search(track_query)                 # perform the search on tracks[]
+                        songs = trazom_utils.search(track_query)                 # perform the search on tracks[]
                         await asyncio.sleep(0)                      # search can be expensive so we pass off before and after
                         for song in songs:
                             self.track_queue.put(Track(song, queryItem.user, queryItem.id))
@@ -135,44 +140,39 @@ class Trazom():
                     return
             
             else:                                                   # youtube search string / url
-                songs = search(queryItem.query)
+                songs = trazom_utils.search(queryItem.query)
                 for song in songs:
                     self.track_queue.put(Track(song, queryItem.user, queryItem.id))
+                
+            # after we've inserted into the track_queue, now update the embed
+            if self.q_msg is not None:
+                await self.q_msg.edit(embed = self.track_queue.get_embed(self.now_playing))
 
     # coroutine that provides downloaded (and normalized) songs to the player via queue
     async def order_handler(self):
-        print("Order handler started")
-        # put in an order so we start playing immedietly
-        self.order_queue.put_nowait("item")
+        # put in an order so we start playing immedietely
+        self.order_queue.put_nowait(20)
+
         # loop for getting the order for the next song from the discord interface
         while True:
-            order = await self.order_queue.get()  # wait on an order for the next song, like a notify mailbox
-                                            # the contents of the order_queue are not relevent since
-                                            # its only being used as a messaging system between coroutines
-            print("new order found!")
-
-            # free the baton for discord interface to respond
-            await asyncio.sleep(0.5)
+            wait_duration = await self.order_queue.get()    # wait on an order for the next song, like a notify mailbox
+                                                            # the contents of the order_queue are how long we should wait
+                                                            # for a song to finish processing before we skip or use a downloaded version
 
             # now a song is requested, get the next track to be played
             track = await self.track_queue.get()
-
-            print("trazom - order handler: fetching track")
-            fname = await track.fetch_track(5)
-            print(fname)
+            fname = await track.fetch_track(wait_duration)
 
             if fname is None:
                 print("trazom - order handler: fetch was none")
                 continue
 
-            print("DL complete, sending to player")
             await self.player_queue.put(track)
 
 
     async def start_tasks(self):
         # connect to the voice channel
         self.voice_client = await self.vchannel.connect()
-        print("trazom connected to voice")
 
         # tasks for trazom
         self.tasks = [
@@ -199,32 +199,67 @@ class Trazom():
         # call the async functions required to start the bot
         self.task = asyncio.create_task(self.start_tasks())
 
-    ## methods that discord commands call to interface with trazom
+
     
     # adds a song request (yt url, spotify url, string search) to be played
     async def play(self, interaction: nextcord.Interaction, query: str):
+
         queryItem = QueryItem(query, interaction)
-        print("putting " + query + " into query_queue")
         self.query_queue.put_nowait(queryItem)
+
+        if self.q_msg is None: # if we don't already have a queue up, display one
+            self.q_msg = await self.trazom_channel.send(embed = self.track_queue.get_embed(self.now_playing))
+            await trazom_utils.short_response(interaction = interaction, response = ":dolphin: DON'T PANIC - the first one might take a while | `" + query + "`", delay = 20)
+        else:
+            await trazom_utils.short_response(interaction = interaction, response = "Searching for: `" + query + "`")
+            
+
+        
 
 
     # gets the list representation of the current play queue
-    def get_queue(self):
-        return self.track_queue.get_embed(self.now_playing)
-        
+    async def get_queue(self, interaction: nextcord.Interaction):
+
+        if self.q_msg is not None:
+            await self.q_msg.delete()
+
+        self.q_msg = await self.trazom_channel.send(embed = self.track_queue.get_embed(self.now_playing))
+
+        await trazom_utils.short_response(interaction = interaction, response = "Queue Fetched!")
     
+
+
     # orders a new song to be played or current one to stop if there is no songs left
-    def skip(self):
-        self.voice_client.stop()
+    async def skip(self, interaction: nextcord.Interaction):
+
+        if self.now_playing is None:
+            await trazom_utils.short_response(interaction = interaction, response = ":notes: Nothing currently playing~")
+        else:
+            self.voice_client.stop()
+            await trazom_utils.short_response(interaction = interaction, response = ":notes: Skipping " + self.now_playing.title)
+
 
 
     # removes the track at a given index from the play queue
-    def remove_track(self, interaction: nextcord.Interaction, track_index: int):
-        pass
-        
+    async def remove_track(self, interaction: nextcord.Interaction, track_index: int):
+
+        removed = await self.track_queue.remove(track_index - 1)
+
+        if removed is None: # if nothing was removed (index out of bound or something else)
+            await trazom_utils.short_response(interaction = interaction, response = ":notes: Song not found!")
+
+        else:   # otherwise, tell them of success and update the displayed queue if there is one
+
+            if self.q_msg is not None:
+                await self.q_msg.edit(embed = self.track_queue.get_embed(self.now_playing))
+
+            await trazom_utils.short_response(interaction = interaction, response = ":notes: Removed " + removed.title)
+
+
+
     # stops the bot
     def stop(self):
-        print("trazom: stop called")
+
         if self.tasks is None:
             return
         for task in self.tasks:

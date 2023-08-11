@@ -12,7 +12,7 @@ async def main():
         config = json.load(open("myConfig.json"))
         TOKEN = config["token"]
         guild = config["guild"]
-        botname = 'trazom_cog'
+        botname = "trazom_cog"
     except:
         print("Manager: couldn't load config file!")
         return
@@ -35,14 +35,14 @@ async def main():
     async def load_cmd(interaction: nextcord.Interaction):
         client.load_extension(botname)
         await client.sync_application_commands(guild_id = guild)
-        await interaction.response.send_message("loaded " + botname)
+        await interaction.response.send_message(botname + " started!")
 
     ## reload cmd
     @client.slash_command(name = "reload", guild_ids=[guild])
     async def reload_cmd(interaction: nextcord.Interaction):
         client.reload_extension(botname)
         await client.sync_application_commands(guild_id = guild)
-        await interaction.response.send_message("reloaded ")
+        await interaction.response.send_message("Reloading ...")
 
     await client.start(token = TOKEN)
 
