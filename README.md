@@ -3,10 +3,11 @@ niche discord music bot in a Cog
 
 dependancies:
  - python (Tested w/ 3.9.7)
- - yt-dlp
+ - yt-dlp and ffmpeg 
  - nextcord (Tested w/ 2.5.0)
  - nextcord voice (pip is nextcord\[voice\])
  - spotipy
+ - ffmpeg-normalize
 
 You will need (I think)
  - A working discord bot that can load extensions
@@ -18,9 +19,11 @@ cool things:
  - search for queries on youtube
  - time based priority queue for added "mom said its my turn"ness
  - cache files with soft folder size limits set in the config
+ - slash command based
 
 To Do List:
  - seeded reccomendations for autoqueue
+ - play from attached file
 
 Would be nice list:
  - faster youtube searching (or at least on a subprocess)
