@@ -6,31 +6,23 @@ import os
 import nextcord
 import spotipy
 
-from yt_dlp import YoutubeDL
 from spotipy.oauth2 import SpotifyClientCredentials
-from datetime import datetime
-from requests import get
+
+import trazom_config
+import trazom_utils
 
 from trazom_utils import Track
 from trazom_utils import QueryItem
 from trazom_utils import PlayQueue
-import trazom_utils
+
+
 
 class Trazom():
     
     def __init__(self, interaction: nextcord.Interaction):
 
-        # loading config
-        try:
-            config = json.load(open("myConfig.json"))
-            cid = config["spotify_client_ID"]
-            secret = config["spotify_app_secret"]
-        except:
-            print("Trazom: couldn't load config file!")
-            return
-
         # spotify
-        self.sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=cid, client_secret=secret))
+        self.sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=trazom_config.spotify_client_ID, client_secret=trazom_config.spotify_app_secret))
 
         # queues for handleing inter-routine data
         self.player_queue = asyncio.Queue(maxsize = 2)  # downloaded tracks to be played by the player
@@ -41,7 +33,7 @@ class Trazom():
         self.track_queue = PlayQueue()                      # the player queue for processed tracks to be played, allows for custom sorting (vs default asyncio.Queue)
         self.vchannel = interaction.user.voice.channel      # channel to connect to, note this is not a connection yet
         self.tasks = None                                   # asyncio tasks trazom uses, to be canceled upon request or unload
-        self.now_playing = None                               # the currently playing song
+        self.now_playing = None                             # the currently playing song
         self.q_msg = None
         self.trazom_channel = interaction.channel
     
@@ -55,8 +47,8 @@ class Trazom():
             track = await self.next_queue.get()
             time_elapsed = 0
             while True: # poll for the song end / skip
-                await asyncio.sleep(1)
-                time_elapsed = time_elapsed + 1
+                await asyncio.sleep(trazom_config.sleep_frequency)
+                time_elapsed = time_elapsed + trazom_config.sleep_frequency
 
                 if self.voice_client.is_playing():
                     continue # continue waiting
@@ -65,8 +57,8 @@ class Trazom():
 
                     if self.q_msg is not None:
                         await self.q_msg.edit(embed = self.track_queue.get_embed(self.now_playing))
-                        
-                    self.order_queue.put_nowait(5)
+
+                    self.order_queue.put_nowait(trazom_config.default_song_wait)
 
                     if time_elapsed < track.duration: # if we finish ahead of time (skip manually stops the track)
                         # record the amount of time skipped for the order calculations
@@ -94,6 +86,7 @@ class Trazom():
                 await self.q_msg.edit(embed = self.track_queue.get_embed(self.now_playing))
 
             self.voice_client.play(source)
+            trazom_utils.update_access_time(track)
             await self.next_queue.put(track)
             
     # coroutine that parses string searches into track datastructures with spotipy and yt-dlp
@@ -103,7 +96,7 @@ class Trazom():
             queryItem = await self.query_queue.get()
 
             # handoff to let response happen
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(trazom_config.handoff_sleep_time)
 
             if "open.spotify.com" in queryItem.query:       # if its a spotify link
                 try:
@@ -129,9 +122,9 @@ class Trazom():
                     # now for every track that was found, perform a youtube search
 
                     for track_query in tracks:
-                        await asyncio.sleep(0)
-                        songs = trazom_utils.search(track_query)                 # perform the search on tracks[]
-                        await asyncio.sleep(0)                      # search can be expensive so we pass off before and after
+                        await asyncio.sleep(trazom_config.handoff_sleep_time)   # search can be expensive so we pass off before
+                        songs = trazom_utils.search(track_query)                # perform the search on tracks[]
+                  
                         for song in songs:
                             self.track_queue.put(Track(song, queryItem.user, queryItem.id))
                         
@@ -151,7 +144,7 @@ class Trazom():
     # coroutine that provides downloaded (and normalized) songs to the player via queue
     async def order_handler(self):
         # put in an order so we start playing immedietely
-        self.order_queue.put_nowait(20)
+        self.order_queue.put_nowait(trazom_config.initial_song_wait)
 
         # loop for getting the order for the next song from the discord interface
         while True:
@@ -176,10 +169,10 @@ class Trazom():
 
         # tasks for trazom
         self.tasks = [
-            asyncio.create_task(self.next_track_handler()),
-            asyncio.create_task(self.player_handler()),
-            asyncio.create_task(self.order_handler()),
-            asyncio.create_task(self.query_handler())
+            asyncio.create_task(self.next_track_handler(), name = "next_handler"),
+            asyncio.create_task(self.player_handler(), name = "player_handler"),
+            asyncio.create_task(self.order_handler(), name = "order_handler"),
+            asyncio.create_task(self.query_handler(), name = "query_handler")
         ]
 
         # wait for them to cancel

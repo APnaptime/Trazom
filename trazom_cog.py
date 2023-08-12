@@ -30,9 +30,6 @@ class TrazomCog(commands.Cog):
         else:
             return None
 
-    # debug printout function
-    def dump_status():
-        pass
 
     def remove_player(self, guild_id): # TODO: profile memory usage, is trazom for sure done running? and does del free the finished trazom
         if guild_id in self.players.keys():
@@ -138,6 +135,10 @@ class TrazomCog(commands.Cog):
         if guild not in self.players.keys():
             return
 
+        if member.voice is not None and member.voice.channel is not None:
+            if self.players[guild].vchannel.id == member.voice.channel.id:
+                print("listner: member count " + str(len(member.voice.channel.members)))
+""" 
         if after is not None and after.channel is not None:
             print("after has states!")
             print(str(len(after.channel.members)) + " after members")
@@ -147,7 +148,7 @@ class TrazomCog(commands.Cog):
         await asyncio.sleep(1)
 
         if guild in self.players.keys():
-            print(str(len(self.players[guild].vchannel.members)) + " members in the channel")
+            print(str(len(self.players[guild].vchannel.members)) + " members in the channel") """
             
             #self.remove_player(guild)
 
