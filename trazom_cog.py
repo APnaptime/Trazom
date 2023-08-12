@@ -20,6 +20,7 @@ class TrazomCog(commands.Cog):
     def __init__(self, bot):
         self.bot : commands.Bot = bot
         self.players = {} # dictionary of guild_id : trazom instance mappings
+        self.listened_once = False  # a flag to facilitate skipping the first voice state listen result
 
     # gets the player associated with a guild/vc andcreates a new trazom instance
     # if one doesn't already exist, makes a new trazom instance
@@ -134,23 +135,14 @@ class TrazomCog(commands.Cog):
 
         if guild not in self.players.keys():
             return
+        #print("voice state change")
+        if self.listened_once:
+            if len(self.players[guild].vchannel.members) == 1:
+                self.remove_player(guild)
+        else:
+            self.listened_once = True
+            return
 
-        if member.voice is not None and member.voice.channel is not None:
-            if self.players[guild].vchannel.id == member.voice.channel.id:
-                print("listner: member count " + str(len(member.voice.channel.members)))
-""" 
-        if after is not None and after.channel is not None:
-            print("after has states!")
-            print(str(len(after.channel.members)) + " after members")
-            if after.channel.id != self.players[guild].vchannel.id:
-                return
-
-        await asyncio.sleep(1)
-
-        if guild in self.players.keys():
-            print(str(len(self.players[guild].vchannel.members)) + " members in the channel") """
-            
-            #self.remove_player(guild)
 
 
 

@@ -213,21 +213,32 @@ class PlayQueue:
 
         tracks = ""
         index = 1
-        max_tracks = 12
-        title_chars = 40
         num_tracks = self.tracks_remaining() 
-        track_num_display = "Displayed tracks: " + str(max_tracks) + "/" + str(num_tracks) if num_tracks > max_tracks else "Displayed tracks: " + str(num_tracks)
+        track_num_display = "Displayed tracks: " + str(trazom_config.q_disp_max_tracks) + "/" + str(num_tracks) if num_tracks > trazom_config.q_disp_max_tracks else "Displayed tracks: " + str(num_tracks)
 
         for track in self.track_list:
-            fixed_title = str(track.title).ljust(title_chars) if len(track.title) < title_chars else track.title[0:title_chars - 3] + "..."
+            fixed_title = str(track.title).ljust(trazom_config.q_disp_title_max_char) if len(track.title) < trazom_config.q_disp_title_max_char else track.title[0:trazom_config.q_disp_title_max_char - 3] + "..."
             tracks = tracks + str(index) + " - " + "[" + track.disp_duration + "]\t`" + fixed_title + "` " + track.requester.mention + "\n"
             index = index + 1
-            if index > max_tracks:
+            if index > trazom_config.q_disp_max_tracks:
                 break
 
         embed = nextcord.Embed(title = title, description = tracks)
         embed.set_footer(text = track_num_display)
 
+        return embed
+
+    def get_session_summary(self):
+        if len(self.played) == 0:
+            return nextcord.Embed(title = ":notes: Trazom complete!", description = "~Tune in next time~")
+
+        tracks = ""
+        index = 1
+        for track in self.played:
+            fixed_title = str(track.title).ljust(trazom_config.q_disp_title_max_char) if len(track.title) < trazom_config.q_disp_title_max_char else track.title[0:trazom_config.q_disp_title_max_char - 3] + "..."
+            tracks = tracks + str(index) + " - " + "[" + track.disp_duration + "]\t`" + fixed_title + "` " + track.requester.mention + "\n"
+            index = index + 1
+        embed = nextcord.Embed(title = ":notes: Trazom complete!", description = tracks)
         return embed
 
     # reorders the playqueue to be based on time
@@ -421,15 +432,19 @@ def search(query):
 # helper function: updates access time ex) https://techoverflow.net/2019/07/22/how-to-set-file-access-time-atime-in-python/
 # should always check to make sure file is in the pool first via song_in_pool
 def update_access_time(track: Track):
-    now = datetime.now()
-    # print("now")
-    fpath = os.path.abspath(track.play_file)
-    # print("path")
-    stat = os.stat(fpath)
-    # print("stat")
-    mtime = stat.st_mtime
-    # print("mtime")
-    os.utime(fpath, times = (now.timestamp(), mtime))
+    try:
+        now = datetime.datetime.now()
+        # print("now")
+        fpath = os.path.abspath(track.play_file)
+        # print("path")
+        stat = os.stat(fpath)
+        # print("stat")
+        mtime = stat.st_mtime
+        # print("mtime")
+        os.utime(fpath, times = (now.timestamp(), mtime))
+        return True
+    except:
+        return False
     
 def clear_space(needed: int, allocated: int, location):
 

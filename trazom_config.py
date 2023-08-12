@@ -1,6 +1,6 @@
 
-spotify_client_ID = None
-spotify_app_secret = None
+spotify_client_ID = ""
+spotify_app_secret = ""
 
 norm_folder = "songPool"            # folder that caches normalized tracks
 norm_allocated = 150 * 1000000      # how much space is allocated to the folder for normalized tracks in bytes
@@ -24,3 +24,6 @@ reply_default_lifespan = 8      # how long to wait before deleting trazom's extr
 
 initial_song_wait = 20          # how long to wait for the first song in a session to be normalized before resorting to a download
 default_song_wait = 5           # how long to wait for a song to be normalized after its required by the player before resorting to a download
+
+q_disp_title_max_char = 40      # how many characters to display for a song title in the queue
+q_disp_max_tracks = 12          # how many tracks to display in the queue

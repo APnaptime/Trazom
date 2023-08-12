@@ -179,12 +179,15 @@ class Trazom():
         for task in self.tasks:
             try:
                 await task
-            except asyncio.CancelledError as e:
+            except:
                 print(task.get_name() + " cancelled!")
 
         # all tasks cancelled
         print("trazom tasks collected!")
         await self.voice_client.disconnect()
+
+        if self.q_msg is not None:
+            await self.q_msg.edit(embed = self.track_queue.get_session_summary())
 
 
     # non async wrapper function for starting the music bot
@@ -252,7 +255,6 @@ class Trazom():
 
     # stops the bot
     def stop(self):
-
         if self.tasks is None:
             return
         for task in self.tasks:
