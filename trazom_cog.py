@@ -56,7 +56,7 @@ class TrazomCog(commands.Cog):
         # ensure the guild the caller is in has a trazom instance
         if not guild in self.players:
             # create a new trazom instance
-            print("cog: new trazom instance")
+            #print("cog: new trazom instance")
             new_instance = Trazom(interaction = interaction)
             new_instance.start()
             self.players[guild] = new_instance        
@@ -97,8 +97,9 @@ class TrazomCog(commands.Cog):
     async def queue_cmd(self, interaction: nextcord.Interaction):
         try:
             await self.cmd_check(interaction)
-        except Exception as e:
-            print("Trazom: Excpetion Caught! (took too long in a task so a command timed out)")
+        except:
+            print("Trazom: Excpetion Caught! (possibly took too long in a task so a command timed out)")
+            traceback.print_exc()
             return
         
         await self.players[interaction.guild_id].get_queue(interaction)

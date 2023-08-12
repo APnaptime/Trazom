@@ -37,8 +37,12 @@ class Trazom():
         self.q_msg = None
         self.trazom_channel = interaction.channel
     
+        if not os.path.exists(os.path.join(os.getcwd(), trazom_config.norm_folder)):
+            os.makedirs(os.path.join(os.getcwd(), trazom_config.norm_folder))
+        
+        if not os.path.exists(os.path.join(os.getcwd(), trazom_config.dl_folder)):
+            os.makedirs(os.path.join(os.getcwd(), trazom_config.dl_folder))
 
-    
 
     # coroutine for ordering the next song to play when the current one is finished playing
     async def next_track_handler(self):

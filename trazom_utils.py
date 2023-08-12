@@ -471,7 +471,7 @@ def clear_space(needed: int, allocated: int, location):
         files.append((last_touched, path, size)) # add a tuple to the list
         total_size = total_size + size
 
-    print("clear_space: current:" + str(total_size) + " out of " + str(allocated) + " allocated")
+    #print("clear_space: current:" + str(total_size) + " out of " + str(allocated) + " allocated")
 
     if total_size + needed < allocated: # then we have enough space
         return True
@@ -489,7 +489,7 @@ def clear_space(needed: int, allocated: int, location):
             print("clear_space: deleting cancelled, file in use (if you see this alot, you might need to reverse the order of sorted_files)")
             return False
 
-    print("clear_space: finished, current " + str(total_size) + " out of " + str(allocated) + " allocated")
+    #print("clear_space: finished, current " + str(total_size) + " out of " + str(allocated) + " allocated")
     return True
     
     

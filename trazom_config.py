@@ -2,12 +2,12 @@
 spotify_client_ID = ""
 spotify_app_secret = ""
 
-norm_folder = "songPool"            # folder that caches normalized tracks
+norm_folder = "norm_cache"            # folder that caches normalized tracks
 norm_allocated = 150 * 1000000      # how much space is allocated to the folder for normalized tracks in bytes
 norm_clear = 30 * 1000000           # how much space to try keep empty for a new song in the norm folder
                                     # a good option is the max song size you'd expect in bytes
 
-dl_folder = "tempdownload"          # folder that caches downloaded tracks
+dl_folder = "download_cache"          # folder that caches downloaded tracks
 dl_allocated = 150 * 1000000      # how much space is allocated to the folder for downloaded tracks in bytes
 dl_clear = 30 * 1000000           # how much space to try keep empty for a new song in the download folder
                                     # a good option is the max song size you'd expect to download in bytes
