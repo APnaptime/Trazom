@@ -18,10 +18,12 @@ pip install -U "nextcord[voice]"
 pip install spotipy
  ```
  - ffmpeg
-unix```
+unix
+```
 apt install ffmpeg
  ```
-windows```
+windows
+```
 choco install ffmpeg
  ```
  - ffmpeg-normalize
