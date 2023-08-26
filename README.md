@@ -2,12 +2,32 @@
 niche discord music bot in a Cog
 
 dependancies:
- - python (Tested w/ 3.9.7)
- - yt-dlp and ffmpeg 
+ - python (Tested w/ 3.9.7) 
+ - yt-dlp
+ ```
+pip install -U yt-dlp
+ ```
  - nextcord (Tested w/ 2.5.0)
  - nextcord voice (pip is nextcord\[voice\])
+```
+pip install nextcord
+pip install -U "nextcord[voice]"
+```
  - spotipy
+```
+pip install spotipy
+ ```
+ - ffmpeg
+unix```
+apt install ffmpeg
+ ```
+windows```
+choco install ffmpeg
+ ```
  - ffmpeg-normalize
+ ```
+pip install ffmpeg-normalize
+ ```
 
 You will need (I think)
  - A working discord bot that can load extensions

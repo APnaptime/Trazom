@@ -134,7 +134,7 @@ class Trazom():
                         
                 except:
                     print("ERROR: parsing spotify query: " + queryItem.query)
-                    return
+                    continue
             
             else:                                                   # youtube search string / url
                 songs = trazom_utils.search(queryItem.query)

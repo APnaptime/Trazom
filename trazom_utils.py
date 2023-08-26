@@ -1,4 +1,3 @@
-import discord
 import asyncio
 import subprocess
 import nextcord
@@ -180,7 +179,7 @@ class Track:
 
 # object to hold query requests and associated requester
 class QueryItem:
-    def __init__(self, query: str, interaction: discord.Interaction):
+    def __init__(self, query: str, interaction: nextcord.Interaction):
         self.query = query
         self.user = interaction.user
         self.id = interaction.user.id
