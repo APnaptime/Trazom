@@ -130,6 +130,7 @@ class Trazom():
                         songs = trazom_utils.search(track_query)                # perform the search on tracks[]
                   
                         for song in songs:
+                            await asyncio.sleep(trazom_config.handoff_sleep_time)
                             self.track_queue.put(Track(song, queryItem.user, queryItem.id))
                         
                 except:
@@ -139,6 +140,7 @@ class Trazom():
             else:                                                   # youtube search string / url
                 songs = trazom_utils.search(queryItem.query)
                 for song in songs:
+                    await asyncio.sleep(trazom_config.handoff_sleep_time)
                     self.track_queue.put(Track(song, queryItem.user, queryItem.id))
                 
             # after we've inserted into the track_queue, now update the embed

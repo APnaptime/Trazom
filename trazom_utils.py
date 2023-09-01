@@ -191,6 +191,8 @@ class PlayQueue:
         self.track_list = []
         self.played = []
         self.time_skipped = {}
+        self.time_played = {}
+        self.player_songs = {}
         self.track_id = 0 # for assigning unique IDs to added tracks 
 
     # updates the list by overrideing with the queue contents
@@ -242,35 +244,31 @@ class PlayQueue:
 
     # reorders the playqueue to be based on time
     def time_priority(self):
-        self.reconcile()
-        #print("Time prio")
-        if len(self.track_list) == 0:
-            #print("time sort: empty list")
-            return
-
-        time_tally = {} # people : player time used
-
-        # get all tracks and their authors
-        for track in self.played:
-            if not track.user_id in time_tally.keys():
-                time_tally[track.user_id] = 0
-
-        for track in self.track_list:
-            if not track.user_id in time_tally.keys():
-                time_tally[track.user_id] = 0
         
-        # now count the prior time played
-        for track in self.played:
-            time_tally[track.user_id] = time_tally[track.user_id] + track.duration
+        if self.track_queue.qsize >= trazom_config.q_disp_max_tracks:   # do we need to add something to the front section of the queue?
+            return                                                      # if not, we can just keep the back as a dict
 
-        # and subtract any skipped duration
-        for uid in self.time_skipped.keys():
-            time_tally[uid] = time_tally[uid] - self.time_skipped[uid]
+        # now we need to update the queue
+        # first, get the queue as a list and empty the queue
+        displayed_tracks = []
+        for i in range(0, self.track_queue.qsize()):
+            item = self.track_queue.get_nowait()
+            displayed_tracks.append(item)
+
+        # get the users who are involved
+        users = self.player_songs.keys()
+        
+        # get the initial time played, from songs that have finished playing and any skipped songs and add any users who might not be in it already
+        for user_id in users:
+            if user_id not in self.time_played.keys():
+                self.time_played[user_id] = 0
+
+        time_tally = dict(self.time_played)
 
         # create a list of songs to be sorted, order by first requested for ease of algorithm later
-        to_sort = sorted(self.track_list, key=lambda x: x.track_id)
-        #print("things to sort: " + str(len(to_sort)))
-        #print("time tally keys: " + str(time_tally.keys()))
+        to_sort = sorted(displayed_tracks, key=lambda x: x.track_id)
+
+
         time_sorted = []
 
         # now we have a time talley, we can order the songs via the following algorithm:
@@ -284,6 +282,10 @@ class PlayQueue:
         #       3) append the selected song to the sorted list and add the song duration to T[u]
         #       4) repeat until no songs remain unsorted
         #print("time prio: algorithm")
+
+        while len(time_sorted < trazom_config.q_disp_max_tracks):
+            
+
         while len(to_sort) > 0:
             # finding the lowest T[u]
             
@@ -293,10 +295,9 @@ class PlayQueue:
             #print("lowest u: " + str(to_sort[0].requester))
             #print("lowest t: " + str(lowest_t))
 
-            # get the user_ids to be sorted
-            users = set()
-            for track in to_sort:
-                users.add(track.user_id)
+            for user, duration in time_tally.items():
+
+
 
             #print("users in set:")
             #print(users)
@@ -367,12 +368,21 @@ class PlayQueue:
     def put(self, track : Track):
         track.track_id = self.track_id
         self.track_id = self.track_id + 1
+
+        if track.user_id not in self.player_songs.keys():
+            self.player_songs[track.user_id] = [track]
+        else:
+            self.player_songs[track.user_id].append(track)
+
+        self.time_priority()
+
         if self.track_queue.qsize() < 2:
             track.req_dl()
         if self.track_queue.qsize() < 1:
             track.req_norm()
         self.track_queue.put_nowait(track)
-        self.time_priority()
+        if self.track_queue.qsize() < trazom_config.q_disp_max_tracks:
+            self.time_priority()
         
     async def remove(self, index: int):
 

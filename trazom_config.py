@@ -1,6 +1,6 @@
 
-spotify_client_ID = ""
-spotify_app_secret = ""
+spotify_client_ID = "777eb560d5d746219f231a894f99e379"
+spotify_app_secret = "8f4e50b8363f4aabad1787b7cb6c656c"
 
 norm_folder = "norm_cache"            # folder that caches normalized tracks
 norm_allocated = 150 * 1000000      # how much space is allocated to the folder for normalized tracks in bytes
