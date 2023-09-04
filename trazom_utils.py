@@ -38,9 +38,10 @@ class Track:
         # print("req_dl: started!")
         # do we already have a downloaded file
         fname = find_file(os.path.join('.',trazom_config.dl_folder), self.filename)
-        # print("req_dl: fname - " + str(fname))
+        #print("req_dl: - " + str(self.title) +  " : " + str(fname))
         if fname is not None: # we found a good file, set the name just in case we haven't already
             self.download_file = trazom_config.dl_folder + "/" + fname
+            return
 
         else:
             # we didn't find the file, are we already downloading something?
@@ -49,7 +50,7 @@ class Track:
             if self.dl_proc is None or self.dl_proc.poll() is not None: 
                 # empty some space!
                 clear_space(trazom_config.dl_clear, trazom_config.dl_allocated, os.path.join('.',trazom_config.dl_folder))
-
+                print("Started Downloading " + self.title)
                 self.dl_proc = subprocess.Popen(['yt-dlp', '--quiet', '-f', 'ba', self.URL, '-o', trazom_config.dl_folder + '/%(id)s.%(ext)s'], shell = True)
                 
                 return
@@ -86,7 +87,8 @@ class Track:
             self.download_file = trazom_config.dl_folder + "/" + fname
             if self.norm_proc is None or self.norm_proc.poll() is not None:
                 clear_space(trazom_config.norm_clear, trazom_config.norm_allocated, os.path.join('.',trazom_config.norm_folder))
-                self.norm_proc = subprocess.Popen(["ffmpeg-normalize", self.download_file, "-o", trazom_config.norm_folder + "/" + self.filename + ".webm", "-c:a", "libopus", "-t", "-14", "--keep-lra-above-loudness-range-target", "-f"], shell = True)
+                print("Started Normalizing " + self.title)
+                self.norm_proc = subprocess.Popen(["ffmpeg-normalize", self.download_file, "-o", trazom_config.norm_folder + "/" + self.filename + ".wav", "-t", "-14", "--keep-lra-above-loudness-range-target", "-f"], shell = True) # "-c:a", "pcm_s16le", 
                 self.norm_listener = None
                 return
         
@@ -188,25 +190,25 @@ class QueryItem:
 class PlayQueue:
     def __init__(self):
         self.track_queue = asyncio.Queue()
-        self.track_list = []
         self.played = []
         self.time_skipped = {}
-        self.time_played = {}
-        self.player_songs = {}
+        self.time_played : dict[int, int] = {}
+        self.player_songs : dict[int, asyncio.Queue] = {} 
         self.track_id = 0 # for assigning unique IDs to added tracks 
 
     # updates the list by overrideing with the queue contents
     # at the end, the list is overwritten and the queue is unchanged
     def reconcile(self):
-        self.track_list = []
+        track_list = []
         #print("reconciling q of size: " + str(self.track_queue.qsize()))
         for i in range(0, self.track_queue.qsize()):
             item = self.track_queue.get_nowait()
-            self.track_list.append(item)
+            track_list.append(item)
             self.track_queue.put_nowait(item)
+        return track_list
 
     def get_embed(self, now_playing):
-        self.reconcile()
+        track_list = self.reconcile()
         title = "Trazom Music Bot :notes:"
 
         if now_playing is not None:
@@ -217,7 +219,7 @@ class PlayQueue:
         num_tracks = self.tracks_remaining() 
         track_num_display = "Displayed tracks: " + str(trazom_config.q_disp_max_tracks) + "/" + str(num_tracks) if num_tracks > trazom_config.q_disp_max_tracks else "Displayed tracks: " + str(num_tracks)
 
-        for track in self.track_list:
+        for track in track_list:
             fixed_title = str(track.title).ljust(trazom_config.q_disp_title_max_char) if len(track.title) < trazom_config.q_disp_title_max_char else track.title[0:trazom_config.q_disp_title_max_char - 3] + "..."
             tracks = tracks + str(index) + " - " + "[" + track.disp_duration + "]\t`" + fixed_title + "` " + track.requester.mention + "\n"
             index = index + 1
@@ -245,7 +247,7 @@ class PlayQueue:
     # reorders the playqueue to be based on time
     def time_priority(self):
         
-        if self.track_queue.qsize >= trazom_config.q_disp_max_tracks:   # do we need to add something to the front section of the queue?
+        if self.track_queue.qsize() >= trazom_config.q_disp_max_tracks:   # do we need to add something to the front section of the queue?
             return                                                      # if not, we can just keep the back as a dict
 
         # now we need to update the queue
@@ -254,14 +256,6 @@ class PlayQueue:
         for i in range(0, self.track_queue.qsize()):
             item = self.track_queue.get_nowait()
             displayed_tracks.append(item)
-
-        # get the users who are involved
-        users = self.player_songs.keys()
-        
-        # get the initial time played, from songs that have finished playing and any skipped songs and add any users who might not be in it already
-        for user_id in users:
-            if user_id not in self.time_played.keys():
-                self.time_played[user_id] = 0
 
         time_tally = dict(self.time_played)
 
@@ -283,68 +277,74 @@ class PlayQueue:
         #       4) repeat until no songs remain unsorted
         #print("time prio: algorithm")
 
-        while len(time_sorted < trazom_config.q_disp_max_tracks):
-            
+        while len(time_sorted) < trazom_config.q_disp_max_tracks:
 
-        while len(to_sort) > 0:
-            # finding the lowest T[u]
+            # find users to check
+            users = set()
+            for track in to_sort:
+                users.add(track.user_id)
             
+            for user, queue in self.player_songs.items():
+                if queue.qsize() > 0:
+                    users.add(user)
+
+            if len(users) < 1:
+                break # no more songs to sort so exit
+
+            # now we have a list of valid users to check
             # initial values for finding min T
-            lowest_u = to_sort[0].user_id
+            lowest_u = list(users)[0]
             lowest_t = time_tally[lowest_u]
             #print("lowest u: " + str(to_sort[0].requester))
             #print("lowest t: " + str(lowest_t))
 
-            for user, duration in time_tally.items():
-
-
-
-            #print("users in set:")
-            #print(users)
-
-            # find the lowest T[u]
-            #print("finding lowest user")
+            # figure out who should go next
             for user in users:
                 if time_tally[user] < lowest_t:
                     lowest_t = time_tally[user]
                     lowest_u = user
             
             # lowest found, add it to the list
+            list_found = False
             for track in to_sort:
                 if track.user_id == lowest_u:
                     #print("lowest user track found")
+                    list_found = True
                     to_sort.remove(track)
                     time_sorted.append(track)
-                    time_tally[track.user_id] = time_tally[track.user_id] + track.duration
+                    time_tally[lowest_u] = time_tally[lowest_u] + track.duration
                     break
+
+            # if we've successfuly found the track in the display list
+            if list_found:
+                continue
+
+            # otherwise we have to get the track from the player_songs
+            track = self.player_songs[lowest_u].get_nowait()
+            time_sorted.append(track)
+            time_tally[lowest_u] = time_tally[lowest_u] + track.duration
 
         # everything is now sorted
 
-        # empty the old queue
-        for i in range(0, self.track_queue.qsize()):
-            self.track_queue.get_nowait()
-
-        # put the sorted list into the now empty queue
+        # put the sorted list into the old empty queue
         for track in time_sorted:
             self.track_queue.put_nowait(track)
 
-        # update the list as well
-        self.track_list = time_sorted
 
     def tracks_remaining(self):
         return self.track_queue.qsize()
     
     def on_deck(self):
-        self.reconcile()
-        if len(self.track_list) >= 1:
-            return self.track_list[0]
+        track_list = self.reconcile() # get the list representation
+        if len(track_list) >= 1:
+            return track_list[0]
         else:
             return None
 
     def in_the_hold(self):
-        self.reconcile()
-        if len(self.track_list) >= 2:
-            return self.track_list[1]
+        track_list = self.reconcile()
+        if len(track_list) >= 2:
+            return track_list[1]
         else:
             return None
 
@@ -358,7 +358,6 @@ class PlayQueue:
     async def get(self):
         track = await self.track_queue.get()
         self.played.append(track)
-        self.reconcile()
         if self.on_deck() is not None:
             self.on_deck().req_norm()
         if self.in_the_hold() is not None:
@@ -366,34 +365,40 @@ class PlayQueue:
         return track
 
     def put(self, track : Track):
+        # increment the unique ID for the track
         track.track_id = self.track_id
         self.track_id = self.track_id + 1
 
-        if track.user_id not in self.player_songs.keys():
-            self.player_songs[track.user_id] = [track]
-        else:
-            self.player_songs[track.user_id].append(track)
-
-        self.time_priority()
-
+        # rare case, if we need to start processing immediately 
         if self.track_queue.qsize() < 2:
+            #print("put requesting DL")
             track.req_dl()
         if self.track_queue.qsize() < 1:
+            #print("put requesting Norm")
             track.req_norm()
-        self.track_queue.put_nowait(track)
-        if self.track_queue.qsize() < trazom_config.q_disp_max_tracks:
-            self.time_priority()
+
+        if track.user_id not in self.time_played.keys():  # initialize the time tracker if not already
+            self.time_played[track.user_id] = 0
+
+        if track.user_id not in self.player_songs.keys(): # initialize the songqueue for this user if not already
+            self.player_songs[track.user_id] = asyncio.Queue()
+        
+        # and now we put the song in the queue for the user
+        self.player_songs[track.user_id].put_nowait(track)
+
+        # maintain the sorted order for the displayed songs
+        self.time_priority()
         
     async def remove(self, index: int):
 
-        self.reconcile()
+        track_list = self.reconcile()
 
-        if index not in range(0,len(self.track_list)):
+        if index not in range(0,len(track_list)):
             return None
         
         else:
             # remove the item:
-            removed = self.track_list.pop(index)
+            removed = track_list.pop(index)
             
             await removed.cleanup()
 
@@ -402,6 +407,8 @@ class PlayQueue:
 
             for track in self.track_list:   # populate the queue again
                 self.track_queue.put_nowait(track)
+
+            self.time_priority()
 
             return removed
 
@@ -483,6 +490,7 @@ def clear_space(needed: int, allocated: int, location):
     #print("clear_space: current:" + str(total_size) + " out of " + str(allocated) + " allocated")
 
     if total_size + needed < allocated: # then we have enough space
+        #print("clear_space: enough already")
         return True
     
     # otherwise start reducing
@@ -495,7 +503,7 @@ def clear_space(needed: int, allocated: int, location):
         try:
             os.remove(item[1])
         except PermissionError:
-            print("clear_space: deleting cancelled, file in use (if you see this alot, you might need to reverse the order of sorted_files)")
+            print("clear_space: deleting cancelled " + str(item[1]))
             return False
 
     #print("clear_space: finished, current " + str(total_size) + " out of " + str(allocated) + " allocated")

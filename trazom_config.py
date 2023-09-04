@@ -1,9 +1,9 @@
 
-spotify_client_ID = "777eb560d5d746219f231a894f99e379"
-spotify_app_secret = "8f4e50b8363f4aabad1787b7cb6c656c"
+spotify_client_ID = ""
+spotify_app_secret = ""
 
 norm_folder = "norm_cache"            # folder that caches normalized tracks
-norm_allocated = 150 * 1000000      # how much space is allocated to the folder for normalized tracks in bytes
+norm_allocated = 250 * 1000000      # how much space is allocated to the folder for normalized tracks in bytes
 norm_clear = 30 * 1000000           # how much space to try keep empty for a new song in the norm folder
                                     # a good option is the max song size you'd expect in bytes
 
@@ -16,6 +16,8 @@ dl_clear = 30 * 1000000           # how much space to try keep empty for a new s
 
 download_wait_after_fetch = 5   # how long to wait for a download to finish
                                 # after the track has been fetched
+
+base_volume = .2             # the base volume of the bot 0-1 
 
 sleep_frequency = 1             # frequency to poll at when sleeping to wait for things
 handoff_sleep_time = 1          # how long to sleep for when handing off the co-routine baton

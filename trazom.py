@@ -79,7 +79,10 @@ class Trazom():
             track:Track = await self.player_queue.get()
             self.player_track = track.track_id
 
-            source = nextcord.FFmpegOpusAudio(track.play_file)
+            try:
+                source = nextcord.PCMVolumeTransformer(nextcord.FFmpegPCMAudio(track.play_file), volume = trazom_config.base_volume)
+            except Exception as e:
+                print(e)
 
             if self.voice_client.is_playing():
                 self.voice_client.stop()
@@ -133,8 +136,9 @@ class Trazom():
                             await asyncio.sleep(trazom_config.handoff_sleep_time)
                             self.track_queue.put(Track(song, queryItem.user, queryItem.id))
                         
-                except:
+                except Exception as e:
                     print("ERROR: parsing spotify query: " + queryItem.query)
+                    print(e)
                     continue
             
             else:                                                   # youtube search string / url
@@ -164,7 +168,10 @@ class Trazom():
 
             if fname is None:
                 print("trazom - order handler: fetch was none")
+                await self.order_queue.put(trazom_config.default_song_wait)
                 continue
+            else:
+                print("order fetched " + fname)
 
             await self.player_queue.put(track)
 
