@@ -24,7 +24,7 @@ class Track:
         self.URL:str = track["url"]             # URL to download from with yt-dlp
         self.requester = user                   # user who requested
         self.user_id = user_id                  # unique ID for requester
-        self.duration = int(track["duration"])  # length of track in minutes
+        self.duration = int(track["duration"])  # length of track in seconds
 
         self.disp_duration = str(self.duration // 60) + ":" + "{secs:0>2}".format(secs=str(self.duration % 60))
         self.dl_proc = None
@@ -88,7 +88,7 @@ class Track:
             if self.norm_proc is None or self.norm_proc.poll() is not None:
                 clear_space(trazom_config.norm_clear, trazom_config.norm_allocated, os.path.join('.',trazom_config.norm_folder))
                 print("Started Normalizing " + self.title)
-                self.norm_proc = subprocess.Popen(["ffmpeg-normalize", self.download_file, "-o", trazom_config.norm_folder + "/" + self.filename + ".wav", "-t", "-14", "--keep-lra-above-loudness-range-target", "-f"], shell = True) # "-c:a", "pcm_s16le", 
+                self.norm_proc = subprocess.Popen(["ffmpeg-normalize", self.download_file, "-b:a", "128k", "-t", "-14", "--keep-lra-above-loudness-range-target", "-f", "-o", trazom_config.norm_folder + "/" + self.filename + ".wav"], shell = True) # "-c:a", "pcm_s16le", 
                 self.norm_listener = None
                 return
         
@@ -194,7 +194,8 @@ class PlayQueue:
         self.time_skipped = {}
         self.time_played : dict[int, int] = {}
         self.player_songs : dict[int, asyncio.Queue] = {} 
-        self.track_id = 0 # for assigning unique IDs to added tracks 
+        self.track_id = 0 # for assigning unique IDs to added tracks
+        self.q_size = 0 # internal tracker for how many tracks are to be played
 
     # updates the list by overrideing with the queue contents
     # at the end, the list is overwritten and the queue is unchanged
@@ -207,17 +208,19 @@ class PlayQueue:
             self.track_queue.put_nowait(item)
         return track_list
 
-    def get_embed(self, now_playing):
+    def get_embed(self, now_playing: Track, footer = None):
         track_list = self.reconcile()
         title = "Trazom Music Bot :notes:"
 
         if now_playing is not None:
-            title = ":notes: Now Playing : " + now_playing.title
+            title = ":notes: Now Playing : " + now_playing.title + " `" + now_playing.disp_duration + "`"
 
         tracks = ""
         index = 1
         num_tracks = self.tracks_remaining() 
         track_num_display = "Displayed tracks: " + str(trazom_config.q_disp_max_tracks) + "/" + str(num_tracks) if num_tracks > trazom_config.q_disp_max_tracks else "Displayed tracks: " + str(num_tracks)
+        if footer is None:
+            footer = track_num_display
 
         for track in track_list:
             fixed_title = str(track.title).ljust(trazom_config.q_disp_title_max_char) if len(track.title) < trazom_config.q_disp_title_max_char else track.title[0:trazom_config.q_disp_title_max_char - 3] + "..."
@@ -227,7 +230,7 @@ class PlayQueue:
                 break
 
         embed = nextcord.Embed(title = title, description = tracks)
-        embed.set_footer(text = track_num_display)
+        embed.set_footer(text = footer)
 
         return embed
 
@@ -332,7 +335,7 @@ class PlayQueue:
 
 
     def tracks_remaining(self):
-        return self.track_queue.qsize()
+        return self.q_size
     
     def on_deck(self):
         track_list = self.reconcile() # get the list representation
@@ -357,17 +360,26 @@ class PlayQueue:
 
     async def get(self):
         track = await self.track_queue.get()
+        self.q_size = self.q_size - 1
         self.played.append(track)
         if self.on_deck() is not None:
             self.on_deck().req_norm()
         if self.in_the_hold() is not None:
             self.in_the_hold().req_dl()
+        if track.user_id not in self.time_played.keys():  # initialize the time tracker if not already
+
+            self.time_played[track.user_id] = track.duration
+        else:
+            self.time_played[track.user_id] = self.time_played[track.user_id] + track.duration
+
         return track
 
     def put(self, track : Track):
         # increment the unique ID for the track
         track.track_id = self.track_id
         self.track_id = self.track_id + 1
+
+        self.q_size = self.q_size + 1
 
         # rare case, if we need to start processing immediately 
         if self.track_queue.qsize() < 2:
@@ -405,8 +417,10 @@ class PlayQueue:
             for i in range(0, self.track_queue.qsize()): # empty the queue
                 item = self.track_queue.get_nowait()
 
-            for track in self.track_list:   # populate the queue again
+            for track in track_list:   # populate the queue again
                 self.track_queue.put_nowait(track)
+
+            self.q_size = self.q_size - 1
 
             self.time_priority()
 
@@ -498,7 +512,7 @@ def clear_space(needed: int, allocated: int, location):
     sorted_files = sorted(files) # will sort by first element of tuple by default from newest to oldest
     
     while total_size + needed > allocated:
-        item = sorted_files.pop() # get oldest item
+        item = sorted_files.pop(0) # get oldest item
         total_size = total_size - item[2]
         try:
             os.remove(item[1])

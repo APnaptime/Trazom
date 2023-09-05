@@ -34,6 +34,7 @@ class Trazom():
         self.vchannel = interaction.user.voice.channel      # channel to connect to, note this is not a connection yet
         self.tasks = None                                   # asyncio tasks trazom uses, to be canceled upon request or unload
         self.now_playing = None                             # the currently playing song
+        self.time_elapsed = 0
         self.q_msg = None
         self.trazom_channel = interaction.channel
     
@@ -49,10 +50,10 @@ class Trazom():
 
         while True:
             track = await self.next_queue.get()
-            time_elapsed = 0
+            self.time_elapsed = 0
             while True: # poll for the song end / skip
                 await asyncio.sleep(trazom_config.sleep_frequency)
-                time_elapsed = time_elapsed + trazom_config.sleep_frequency
+                self.time_elapsed = self.time_elapsed + trazom_config.sleep_frequency
 
                 if self.voice_client.is_playing():
                     continue # continue waiting
@@ -64,9 +65,9 @@ class Trazom():
 
                     self.order_queue.put_nowait(trazom_config.default_song_wait)
 
-                    if time_elapsed < track.duration: # if we finish ahead of time (skip manually stops the track)
+                    if self.time_elapsed < track.duration: # if we finish ahead of time (skip manually stops the track)
                         # record the amount of time skipped for the order calculations
-                        self.track_queue.notify_skipped(track = track, duration = track.duration - time_elapsed)
+                        self.track_queue.notify_skipped(track = track, duration = track.duration - self.time_elapsed)
 
                     break
 
@@ -134,22 +135,27 @@ class Trazom():
                   
                         for song in songs:
                             await asyncio.sleep(trazom_config.handoff_sleep_time)
-                            self.track_queue.put(Track(song, queryItem.user, queryItem.id))
+                            track = Track(song, queryItem.user, queryItem.id)
+                            self.track_queue.put(track)
+                            if self.q_msg is not None:
+                                await self.q_msg.edit(embed = self.track_queue.get_embed(self.now_playing, footer = "Added: " + str(track.title)))
                         
                 except Exception as e:
                     print("ERROR: parsing spotify query: " + queryItem.query)
                     print(e)
+                    if self.q_msg is not None:
+                        await self.q_msg.edit(embed = self.track_queue.get_embed(self.now_playing, footer = "Error parsing query: " + str(queryItem.query)))
                     continue
             
             else:                                                   # youtube search string / url
                 songs = trazom_utils.search(queryItem.query)
                 for song in songs:
                     await asyncio.sleep(trazom_config.handoff_sleep_time)
-                    self.track_queue.put(Track(song, queryItem.user, queryItem.id))
-                
-            # after we've inserted into the track_queue, now update the embed
-            if self.q_msg is not None:
-                await self.q_msg.edit(embed = self.track_queue.get_embed(self.now_playing))
+                    track = Track(song, queryItem.user, queryItem.id)
+                    self.track_queue.put(track)
+                    if self.q_msg is not None:
+                        await self.q_msg.edit(embed = self.track_queue.get_embed(self.now_playing, footer = "Added: " + str(track.title)))
+
 
     # coroutine that provides downloaded (and normalized) songs to the player via queue
     async def order_handler(self):
@@ -232,7 +238,7 @@ class Trazom():
         if self.q_msg is not None:
             await self.q_msg.delete()
 
-        self.q_msg = await self.trazom_channel.send(embed = self.track_queue.get_embed(self.now_playing))
+        self.q_msg = await self.trazom_channel.send(embed = self.track_queue.get_embed(self.now_playing, footer = "Progress: " + str(self.time_elapsed // 60) + ":" + "{secs:0>2}".format(secs=str(self.time_elapsed % 60)) + " / " + self.now_playing.disp_duration))
 
         await trazom_utils.short_response(interaction = interaction, response = "Queue Fetched!")
     
@@ -252,7 +258,7 @@ class Trazom():
     # removes the track at a given index from the play queue
     async def remove_track(self, interaction: nextcord.Interaction, track_index: int):
 
-        removed = await self.track_queue.remove(track_index - 1)
+        removed:Track = await self.track_queue.remove(track_index - 1)
 
         if removed is None: # if nothing was removed (index out of bound or something else)
             await trazom_utils.short_response(interaction = interaction, response = ":notes: Song not found!")
@@ -260,7 +266,7 @@ class Trazom():
         else:   # otherwise, tell them of success and update the displayed queue if there is one
 
             if self.q_msg is not None:
-                await self.q_msg.edit(embed = self.track_queue.get_embed(self.now_playing))
+                await self.q_msg.edit(embed = self.track_queue.get_embed(self.now_playing, footer = "Removed: " + removed.title))
 
             await trazom_utils.short_response(interaction = interaction, response = ":notes: Removed " + removed.title)
 
