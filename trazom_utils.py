@@ -359,6 +359,9 @@ class PlayQueue:
             self.time_skipped[track.user_id] = duration
 
     async def get(self):
+        # maintain the sorted order for the displayed songs
+        self.time_priority()
+        
         track = await self.track_queue.get()
         self.q_size = self.q_size - 1
         self.played.append(track)
