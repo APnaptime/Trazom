@@ -33,7 +33,7 @@ pip install ffmpeg-normalize
 
 You will need (I think)
  - A working discord bot that can load extensions
- - Spotify Developer Credentials (client ID and app secret)
+ - Spotify Developer Credentials (client ID and app secret) [how to](https://developer.spotify.com/documentation/web-api/tutorials/getting-started)
 
 cool things:
  - Audio normalization with ffmpeg-normalize
