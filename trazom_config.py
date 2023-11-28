@@ -3,8 +3,8 @@ spotify_client_ID = ""
 spotify_app_secret = ""
 
 norm_folder = "norm_cache"            # folder that caches normalized tracks
-norm_allocated = 240 * 1000000      # how much space is allocated to the folder for normalized tracks in bytes
-norm_clear = 40 * 1000000           # how much space to try keep empty for a new song in the norm folder
+norm_allocated = 100 * 1000000      # how much space is allocated to the folder for normalized tracks in bytes
+norm_clear = 5 * 1000000           # how much space to try keep empty for a new song in the norm folder
                                     # a good option is the max song size you'd expect in bytes
 
 dl_folder = "download_cache"          # folder that caches downloaded tracks
@@ -19,8 +19,8 @@ download_wait_after_fetch = 5   # how long to wait for a download to finish
 
 base_volume = .15             # the base volume of the bot 0-1 -Reccomended: .15
 
-sleep_frequency = 1             # frequency to poll at when sleeping to wait for things
-handoff_sleep_time = 1          # how long to sleep for when handing off the co-routine baton
+sleep_frequency = .5             # frequency to poll at when sleeping to wait for things
+handoff_sleep_time = .5          # how long to sleep for when handing off the co-routine baton
 
 reply_default_lifespan = 8      # how long to wait before deleting trazom's extraneous responses, if negative then it won't delete them
 

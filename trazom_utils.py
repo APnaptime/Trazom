@@ -40,7 +40,7 @@ class Track:
         fname = find_file(os.path.join('.',trazom_config.dl_folder), self.filename)
         #print("req_dl: - " + str(self.title) +  " : " + str(fname))
         if fname is not None: # we found a good file, set the name just in case we haven't already
-            self.download_file = trazom_config.dl_folder + "/" + fname
+            self.download_file =  os.path.join(trazom_config.dl_folder, fname) # trazom_config.dl_folder + "/" + fname
             return
 
         else:
@@ -84,11 +84,13 @@ class Track:
             return
         else: # otherwise, schedule the norm
             # print("norm: dl finished, starting norm")
-            self.download_file = trazom_config.dl_folder + "/" + fname
+            self.download_file = os.path.join(trazom_config.dl_folder, fname) # trazom_config.dl_folder + "/" + fname
             if self.norm_proc is None or self.norm_proc.poll() is not None:
                 clear_space(trazom_config.norm_clear, trazom_config.norm_allocated, os.path.join('.',trazom_config.norm_folder))
                 print("Started Normalizing " + self.title)
-                self.norm_proc = subprocess.Popen(["ffmpeg-normalize", self.download_file, "-b:a", "128k", "-t", "-14", "--keep-lra-above-loudness-range-target", "-f", "-o", trazom_config.norm_folder + "/" + self.filename + ".wav"], shell = True) # "-c:a", "pcm_s16le", 
+
+                # trazom_config.norm_folder + "/" + self.filename + ".wav" "-b:a", "64k", 
+                self.norm_proc = subprocess.Popen(["ffmpeg-normalize", self.download_file, "-t", "-30", "-lrt", "7", "--keep-lra-above-loudness-range-target", "-f",  "-c:a", "libopus", "-b:a", "64k", "-o", os.path.join(trazom_config.norm_folder, self.filename) + ".opus"], shell = True) # "-c:a", "pcm_s16le", 
                 self.norm_listener = None
                 return
         
@@ -102,7 +104,7 @@ class Track:
 
         if fname is not None: # we found a good file, set the name just in case we haven't already
             # print("req norm: file already found")
-            self.normalized_file = trazom_config.norm_folder + "/" + fname
+            self.normalized_file = os.path.join(trazom_config.norm_folder, fname) # trazom_config.norm_folder + "/" + fname
             return
 
         elif self.norm_listener is not None: # if we've already started the task
@@ -118,7 +120,7 @@ class Track:
         fname = find_file(os.path.join('.',trazom_config.norm_folder), self.filename) 
         if fname is not None:
             # print("fetch: norm found")
-            self.normalized_file = trazom_config.norm_folder + "/" + fname
+            self.normalized_file = os.path.join(trazom_config.norm_folder, fname) # trazom_config.norm_folder + "/" + fname
             self.play_file = self.normalized_file
             return self.play_file
         
@@ -137,7 +139,7 @@ class Track:
 
             fname = find_file(os.path.join('.',trazom_config.norm_folder), self.filename)
             if fname is not None:
-                self.normalized_file = trazom_config.norm_folder + "/" + fname
+                self.normalized_file = os.path.join(trazom_config.norm_folder, fname) # trazom_config.norm_folder + "/" + fname
                 self.play_file = self.normalized_file
                 return self.normalized_file
 
@@ -148,7 +150,7 @@ class Track:
         fname = find_file(os.path.join('.',trazom_config.dl_folder), self.filename)
         if fname is not None:
             # print("fetch: returning dl ver")
-            self.download_file = trazom_config.dl_folder + "/" + fname
+            self.download_file = os.path.join(trazom_config.dl_folder, fname) # trazom_config.dl_folder + "/" + fname
             self.play_file = self.download_file
             return self.play_file
         

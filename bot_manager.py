@@ -2,8 +2,6 @@ import asyncio
 import nextcord
 from nextcord.ext import commands
 import json
-from trazom_cog import TrazomCog
-
 
 async def main():
     

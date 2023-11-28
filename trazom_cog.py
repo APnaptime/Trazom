@@ -36,7 +36,7 @@ class TrazomCog(commands.Cog):
         if guild_id in self.players.keys():
             self.players[guild_id].stop()
             del self.players[guild_id]
-
+  
     def cog_unload(self) -> None:
         print("trazom unloading!")
         for guild_id in self.players.keys():
@@ -44,17 +44,17 @@ class TrazomCog(commands.Cog):
         return super().cog_unload()
 
     ## slash command definitions
-
-    async def cmd_check(self, interaction: nextcord.Interaction):
+  
+    async def cmd_check(self, interaction: nextcord.Interaction, can_make_new = True):
         await interaction.response.defer()
-        guild = interaction.guild_id
+        guild = interaction.guild_id 
         # ensure the caller is in a vc
         if interaction.user.voice is None or interaction.user.voice.channel is None:
             await short_response(interaction = interaction, response = "You must be connected to a voice channel~")
             raise commands.CommandError("caller not in a voice channel")
 
         # ensure the guild the caller is in has a trazom instance
-        if not guild in self.players:
+        if can_make_new and not guild in self.players:
             # create a new trazom instance
             #print("cog: new trazom instance")
             new_instance = Trazom(interaction = interaction)
@@ -62,7 +62,7 @@ class TrazomCog(commands.Cog):
             self.players[guild] = new_instance        
 
         # ensure the vc of trazom and the caller are the same
-        if not interaction.user.voice.channel == self.players[guild].vchannel:
+        if can_make_new and not interaction.user.voice.channel == self.players[guild].vchannel:
             await short_response(interaction = interaction, response = "You must be in the same voice channel~")
             raise commands.CommandError("caller not in same voice channel")
 
@@ -121,7 +121,7 @@ class TrazomCog(commands.Cog):
     @nextcord.slash_command(name = "e", description = "Exit: Trazom - exit stage right")
     async def exit_cmd(self, interaction: nextcord.Interaction):
         try:
-            await self.cmd_check(interaction)
+            await self.cmd_check(interaction, can_make_new = False)
         except commands.CommandError:
             return
         await interaction.followup.send(content = ":notes: Trazom exit~")

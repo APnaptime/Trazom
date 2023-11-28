@@ -58,6 +58,7 @@ class Trazom():
                 if self.voice_client.is_playing():
                     continue # continue waiting
                 else:
+                    print("song end detected")
                     self.now_playing = None
 
                     if self.q_msg is not None:
@@ -81,7 +82,8 @@ class Trazom():
             self.player_track = track.track_id
 
             try:
-                source = nextcord.PCMVolumeTransformer(nextcord.FFmpegPCMAudio(track.play_file), volume = trazom_config.base_volume)
+                # source = nextcord.PCMVolumeTransformer(nextcord.FFmpegPCMAudio(track.play_file), volume = trazom_config.base_volume)
+                source = nextcord.FFmpegOpusAudio(track.play_file, bitrate = 64)
             except Exception as e:
                 print(e)
 
@@ -95,6 +97,7 @@ class Trazom():
 
             self.voice_client.play(source)
             trazom_utils.update_access_time(track)
+            await asyncio.sleep(trazom_config.sleep_frequency) # wait a bit before checking for skips
             await self.next_queue.put(track)
             
     # coroutine that parses string searches into track datastructures with spotipy and yt-dlp
