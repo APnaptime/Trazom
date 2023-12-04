@@ -51,7 +51,7 @@ class Track:
                 # empty some space!
                 clear_space(trazom_config.dl_clear, trazom_config.dl_allocated, os.path.join('.',trazom_config.dl_folder))
                 print("Started Downloading " + self.title)
-                self.dl_proc = subprocess.Popen(['yt-dlp', '--quiet', '-f', 'ba', self.URL, '-o', trazom_config.dl_folder + '/%(id)s.%(ext)s'], shell = True)
+                self.dl_proc = subprocess.Popen(['yt-dlp', '--quiet', '-f', 'ba', self.URL, '-o', trazom_config.dl_folder + '/%(id)s.%(ext)s'], shell = False)
                 
                 return
             
@@ -90,10 +90,9 @@ class Track:
                 print("Started Normalizing " + self.title)
 
                 # trazom_config.norm_folder + "/" + self.filename + ".wav" "-b:a", "64k", 
-                self.norm_proc = subprocess.Popen(["ffmpeg-normalize", self.download_file, "-t", "-30", "-lrt", "7", "--keep-lra-above-loudness-range-target", "-f",  "-c:a", "libopus", "-b:a", "64k", "-o", os.path.join(trazom_config.norm_folder, self.filename) + ".opus"], shell = True) # "-c:a", "pcm_s16le", 
+                self.norm_proc = subprocess.Popen(["ffmpeg-normalize", self.download_file, "-t", "-30", "-lrt", "7", "--keep-lra-above-loudness-range-target", "-f",  "-c:a", "libopus", "-b:a", "64k", "-o", os.path.join(trazom_config.norm_folder, self.filename) + ".opus"], shell = False) # "-c:a", "pcm_s16le", 
                 self.norm_listener = None
                 return
-        
 
 
     # wrapper function for requesting a normalize operation to be performed. Unlike req_dl, this requires waiting for a download
